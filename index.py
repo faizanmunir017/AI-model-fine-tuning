@@ -1,70 +1,63 @@
-from openai import OpenAI
 from dotenv import load_dotenv
 import os
+import google.generativeai as genai
 import time
+import json
 
 load_dotenv()
+genai.configure(api_key=os.getenv("GEMINI_KEY"))
 
-print(os.getenv("OPENAI_API_KEY"))
+print("API Key Loaded:", os.getenv("GEMINI_KEY"))
 
-client = OpenAI()
+training_data = [
+    {"text_input": "1", "output": "2"},
+    {"text_input": "3", "output": "4"},
+    {"text_input": "-3", "output": "-2"},
+    {"text_input": "twenty two", "output": "twenty three"},
+    {"text_input": "two hundred", "output": "two hundred one"},
+    {"text_input": "ninety nine", "output": "one hundred"},
+    {"text_input": "8", "output": "9"},
+    {"text_input": "-98", "output": "-97"},
+    {"text_input": "1,000", "output": "1,001"},
+    {"text_input": "10,100,000", "output": "10,100,001"},
+    {"text_input": "thirteen", "output": "fourteen"},
+    {"text_input": "eighty", "output": "eighty one"},
+    {"text_input": "one", "output": "two"},
+    {"text_input": "three", "output": "four"},
+    {"text_input": "seven", "output": "eight"},
+  ]
 
+# try:
+#     with open("dataset/mydata.jsonl", "r") as file:
+#         for line in file:
+#             line = line.strip()  # Strip any unnecessary whitespace
+#             if line:  # Skip empty lines
+#                 try:
+#                     training_data.append(json.loads(line))
+#                 except json.JSONDecodeError as e:
+#                     print(f"Error decoding line: {e}")
+# except FileNotFoundError:
+#     print("File not found")
 
-try:
-    file_obj = client.files.create(
-        file=open("dataset/mydata.jsonl", "rb"),
-        purpose="fine-tune"
-    )
-    file_id = file_obj.id  
-    print("File Id is:", file_id)
-except Exception as e:
-    print(f"Error uploading file: {e}")
-    exit()
+print(training_data)
 
+base_model = "models/gemini-1.5-flash-001-tuning"
 
-try:
-    fine_tune_job = client.fine_tuning.jobs.create(
-        training_file=file_id,
-        model="gpt-3.5-turbo" 
-    )
-    print("Fine-tune job started.")
-    print(fine_tune_job)
+operation = genai.create_tuned_model(
+    display_name="increment_model",  
+    source_model=base_model,
+    epoch_count=20,  
+    batch_size=4,   
+    learning_rate=0.001,  
+    training_data=training_data, 
+)
 
-except Exception as e:
-    print(f"Error starting fine-tune job: {e}")
-    exit()
+for status in operation.wait_bar():
+    time.sleep(10) 
 
+result = operation.result()
+print(f"Fine-tuning completed. Model name: {result.name}")
 
-model_id=""
-
-while True:
-    try:
-        fine_tune_job = client.fine_tuning.jobs.retrieve(fine_tune_job.id)
-        if fine_tune_job.status == "succeeded":
-            model_id = fine_tune_job.fine_tuned_model
-            print(f"Fine-tuned Job: {fine_tune_job.fine_tuned_model}")
-            break
-        elif fine_tune_job.status == "failed":
-            print("Fine-tuning job failed")
-            print(fine_tune_job)
-            break
-        else:
-            print(f"Job still processing... Status: {fine_tune_job.status}")
-            time.sleep(5)
-    except Exception as e:  
-        print()
-        print(f"Error retrieving fine-tune job status: {e}")
-        break
-
-
-try:
-    completion = client.chat.completions.create(
-        model=model_id,
-        messages=[
-            {"role": "system", "content": "Marv is a factual chatbot that is also sarcastic."},
-            {"role": "user", "content": "What's the capital of France?"}
-        ]
-    )
-    print(completion.choices[0].message)
-except Exception as e:
-    print(f"Error generating completion: {e}")
+model = genai.GenerativeModel(model_name=result.name)
+response = model.generate_content("III")  
+print("Model Output:", response.text)
